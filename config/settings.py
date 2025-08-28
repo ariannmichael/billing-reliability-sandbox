@@ -10,11 +10,21 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+# Env vars
+DJANGO_SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+DEBUG = os.environ.get("DEBUG", "1") == "1"
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite://db.sqlite3")
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "whsec_test_123")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -49,6 +59,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.request_id.RequestIDMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -74,12 +85,25 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+if DATABASE_URL.startswith("sqlite"):
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+else:
+    import urllib.parse as up
+    up.uses_netloc.append("postgres")
+    up.uses_netloc.append("mysql")
+    url = up.urlparse(DATABASE_URL)
+    ENGINE = "django.db.backends.postgresql" if "postgres" in DATABASE_URL else "django.db.backends.mysql"
+    DATABASES = {
+        "default": {
+            "ENGINE": ENGINE,
+            "NAME": url.path[1:],
+            "USER": url.username,
+            "PASSWORD": url.password,
+            "HOST": url.hostname,
+            "PORT": url.port or "",
+            "CONN_MAX_AGE": 60,
+        }
     }
-}
 
 
 # Password validation
@@ -122,3 +146,67 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- DRF minimal defaults ---
+REST_FRAMEWORK = {
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",
+    ],
+}
+
+# --- Celery ---
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_TASK_TIME_LIMIT = 30
+CELERY_TASK_SOFT_TIME_LIMIT = 25
+
+# --- Logging with request_id + JSON-ish format ---
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+class RequestIDFilter:
+    """Injects request_id into log records (set by middleware)."""
+    def filter(self, record):
+        from threading import local
+        rid = getattr(_req_local, "request_id", "-")
+        record.request_id = rid
+        return True
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": RequestIDFilter},
+    },
+    "formatters": {
+        "json": {
+            "format": (
+                '{"ts":"%(asctime)s","level":"%(levelname)s",'
+                '"logger":"%(name)s","request_id":"%(request_id)s",'
+                '"message":"%(message)s"}'
+            )
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": LOG_LEVEL,
+            "formatter": "json",
+            "filters": ["request_id"],
+        }
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+}
+
+# Thread-local used by middleware/filter
+from threading import local
+_req_local = local()
