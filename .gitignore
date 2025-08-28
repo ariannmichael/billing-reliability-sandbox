@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.Python
+
+# Virtualenv
+.env
+.venv
+env/
+venv/
+ENV/
+.venv*/
+pip-wheel-metadata/
+*.whl
+
+# Django / Celery
+*.log
+*.pot
+*.py,cover
+db.sqlite3
+media/
+staticfiles/
+celerybeat-schedule
+celerybeat.pid
+
+# Coverage / testing
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.pytest_cache/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Docker
+*.pid
+*.seed
+docker-compose.override.yml
+
+# Env files
+.env
+.env.*
+!*.env.example
+
+# Node (if any frontend assets get added later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Mac/Linux cruft
+.DS_Store
+Thumbs.db
